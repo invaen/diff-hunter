@@ -25,6 +25,8 @@ import ssl
 import http.client
 import difflib
 
+__version__ = "1.0.0"
+
 # Colors
 class C:
     R = '\033[91m'; G = '\033[92m'; Y = '\033[93m'; B = '\033[94m'
@@ -175,7 +177,13 @@ class DiffHunter:
         paths = [
             '/.git/HEAD', '/.env', '/robots.txt', '/sitemap.xml',
             '/swagger.json', '/api/swagger.json', '/graphql',
-            '/actuator/health', '/debug', '/.well-known/security.txt'
+            '/actuator/health', '/debug', '/.well-known/security.txt',
+            '/openapi.json', '/api-docs', '/api/v1/docs',
+            '/.DS_Store', '/wp-json/wp/v2/users', '/server-status',
+            '/server-info', '/elmah.axd', '/trace.axd',
+            '/actuator/env', '/actuator/configprops',
+            '/admin', '/admin/login', '/phpinfo.php',
+            '/.htaccess', '/crossdomain.xml', '/clientaccesspolicy.xml',
         ]
 
         found = []
@@ -190,7 +198,7 @@ class DiffHunter:
                 if resp.status == 200:
                     found.append(path)
                 conn.close()
-            except:
+            except Exception:
                 pass
 
         return found
@@ -353,7 +361,7 @@ class DiffHunter:
                 alert_time = datetime.fromisoformat(alert['timestamp'])
                 if alert_time > cutoff:
                     recent.append(alert)
-            except:
+            except Exception:
                 pass
 
         if not recent:
@@ -384,6 +392,7 @@ class DiffHunter:
 
 def main():
     parser = argparse.ArgumentParser(description='Diff Hunter - Monitor targets for changes')
+    parser.add_argument('-V', '--version', action='version', version=f'diff-hunter {__version__}')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # Add target
