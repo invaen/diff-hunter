@@ -111,7 +111,7 @@ class DiffHunter:
     def list_targets(self):
         """List all monitored targets"""
         if not self.targets:
-            self.log("No targets being monitored. Add one with: hunter.py add domain.com", 'warn')
+            self.log("No targets being monitored. Add one with: diff-hunter add domain.com", 'warn')
             return
 
         print(f"\n{C.Y}Monitored Targets:{C.E}")
