@@ -96,12 +96,18 @@ For each known host, tracks:
 - **Server header** — detects infrastructure changes
 
 ### 3. Sensitive Endpoint Exposure
-Checks 10 high-value paths on the main domain:
+Checks 27 high-value paths on the main domain:
 ```
-/.git/HEAD          /.env             /robots.txt
-/sitemap.xml        /swagger.json     /api/swagger.json
-/graphql            /actuator/health  /debug
-/.well-known/security.txt
+/.git/HEAD          /.env               /robots.txt
+/sitemap.xml        /swagger.json       /api/swagger.json
+/graphql            /actuator/health    /debug
+/.well-known/security.txt              /openapi.json
+/api-docs           /api/v1/docs        /.DS_Store
+/wp-json/wp/v2/users /server-status    /server-info
+/elmah.axd          /trace.axd          /actuator/env
+/actuator/configprops /admin            /admin/login
+/phpinfo.php        /.htaccess          /crossdomain.xml
+/clientaccesspolicy.xml
 ```
 
 ## Output

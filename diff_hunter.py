@@ -3,14 +3,13 @@
 Diff Hunter - Monitor targets for changes, catch new attack surface first.
 
 Usage:
-    python hunter.py add target.com          # Add target to monitor
-    python hunter.py scan                    # Run scan on all targets
-    python hunter.py scan target.com         # Scan specific target
-    python hunter.py watch                   # Continuous monitoring
-    python hunter.py report                  # Show recent changes
+    diff-hunter add target.com          # Add target to monitor
+    diff-hunter scan                    # Run scan on all targets
+    diff-hunter scan target.com         # Scan specific target
+    diff-hunter watch                   # Continuous monitoring
+    diff-hunter report                  # Show recent changes
 """
 
-import subprocess
 import json
 import sys
 import os
@@ -19,11 +18,10 @@ import argparse
 import time
 from datetime import datetime
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import socket
 import ssl
 import http.client
-import difflib
+import re
 
 __version__ = "1.0.0"
 
@@ -60,7 +58,11 @@ class DiffHunter:
 
     def load_targets(self):
         if self.targets_file.exists():
-            return json.loads(self.targets_file.read_text())
+            try:
+                return json.loads(self.targets_file.read_text())
+            except json.JSONDecodeError:
+                self.log("Failed to parse targets.json, starting with empty targets", 'warn')
+                return {}
         return {}
 
     def save_targets(self):
@@ -68,7 +70,11 @@ class DiffHunter:
 
     def load_alerts(self):
         if self.alerts_file.exists():
-            return json.loads(self.alerts_file.read_text())
+            try:
+                return json.loads(self.alerts_file.read_text())
+            except json.JSONDecodeError:
+                self.log("Failed to parse alerts.json, starting with empty alerts", 'warn')
+                return []
         return []
 
     def save_alerts(self):
@@ -79,6 +85,10 @@ class DiffHunter:
     def add_target(self, domain):
         """Add a new target to monitor"""
         domain = domain.lower().replace('https://', '').replace('http://', '').strip('/')
+
+        if '.' not in domain or ' ' in domain or not re.match(r'^[a-z0-9]([a-z0-9\-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]*[a-z0-9])?)+$', domain):
+            self.log(f"Invalid domain: {domain}", 'error')
+            return
 
         if domain in self.targets:
             self.log(f"{domain} already being monitored", 'warn')
@@ -157,18 +167,20 @@ class DiffHunter:
             context.verify_mode = ssl.CERT_NONE
 
             conn = http.client.HTTPSConnection(host, timeout=5, context=context)
-            conn.request('GET', p.path or '/', headers={'User-Agent': 'Mozilla/5.0'})
-            resp = conn.getresponse()
-            body = resp.read()
-            conn.close()
+            try:
+                conn.request('GET', p.path or '/', headers={'User-Agent': 'Mozilla/5.0'})
+                resp = conn.getresponse()
+                body = resp.read()
 
-            return {
-                'status': resp.status,
-                'headers_hash': hashlib.md5(str(dict(resp.getheaders())).encode()).hexdigest()[:8],
-                'body_hash': hashlib.md5(body).hexdigest()[:8],
-                'body_length': len(body),
-                'server': resp.getheader('Server', 'Unknown')
-            }
+                return {
+                    'status': resp.status,
+                    'headers_hash': hashlib.md5(str(dict(resp.getheaders())).encode()).hexdigest()[:8],
+                    'body_hash': hashlib.md5(body).hexdigest()[:8],
+                    'body_length': len(body),
+                    'server': resp.getheader('Server', 'Unknown')
+                }
+            finally:
+                conn.close()
         except Exception as e:
             return None
 
@@ -193,11 +205,13 @@ class DiffHunter:
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
                 conn = http.client.HTTPSConnection(host, timeout=3, context=context)
-                conn.request('GET', path, headers={'User-Agent': 'Mozilla/5.0'})
-                resp = conn.getresponse()
-                if resp.status == 200:
-                    found.append(path)
-                conn.close()
+                try:
+                    conn.request('GET', path, headers={'User-Agent': 'Mozilla/5.0'})
+                    resp = conn.getresponse()
+                    if resp.status == 200:
+                        found.append(path)
+                finally:
+                    conn.close()
             except Exception:
                 pass
 
