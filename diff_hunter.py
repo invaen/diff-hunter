@@ -40,16 +40,29 @@ def banner():
     """)
 
 class DiffHunter:
-    def __init__(self):
+    def __init__(self, webhook_url=None):
         self.data_dir = Path.home() / '.bounty' / 'diff-hunter'
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.targets_file = self.data_dir / 'targets.json'
         self.history_dir = self.data_dir / 'history'
         self.history_dir.mkdir(exist_ok=True)
         self.alerts_file = self.data_dir / 'alerts.json'
+        self.config_file = self.data_dir / 'config.json'
+        self.webhook_url = webhook_url or self.load_config().get('webhook_url')
 
         self.targets = self.load_targets()
         self.alerts = self.load_alerts()
+
+    def load_config(self):
+        if self.config_file.exists():
+            try:
+                return json.loads(self.config_file.read_text())
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
+    def save_config(self, config):
+        self.config_file.write_text(json.dumps(config, indent=2))
 
     def log(self, msg, level='info'):
         icons = {'info': f'{C.B}[*]{C.E}', 'success': f'{C.G}[+]{C.E}',
@@ -80,6 +93,54 @@ class DiffHunter:
 
     def save_alerts(self):
         self.alerts_file.write_text(json.dumps(self.alerts, indent=2))
+
+    def send_webhook(self, changes):
+        """Send alert to webhook (Discord, Slack, or generic HTTP)"""
+        if not self.webhook_url or not changes:
+            return
+
+        # Build message
+        lines = [f"**Diff Hunter** — {len(changes)} change(s) detected\n"]
+        for c in changes[:15]:  # Cap at 15 to avoid huge payloads
+            if c['type'] == 'new_subdomain':
+                lines.append(f"🆕 New subdomain: `{c['subdomain']}`")
+            elif c['type'] == 'new_endpoint':
+                lines.append(f"🔓 New endpoint: `{c['host']}{c['path']}`")
+            elif c['type'] == 'status_change':
+                lines.append(f"⚡ Status change: `{c['host']}` {c['old']} → {c['new']}")
+            elif c['type'] == 'content_change':
+                lines.append(f"📝 Content changed: `{c['host']}`")
+            elif c['type'] == 'dns_change':
+                lines.append(f"🔀 DNS change: `{c['host']}` [{c.get('record', 'A')}]")
+        if len(changes) > 15:
+            lines.append(f"... and {len(changes) - 15} more")
+
+        text = "\n".join(lines)
+
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(self.webhook_url)
+            is_discord = 'discord.com' in parsed.netloc
+            is_slack = 'hooks.slack.com' in parsed.netloc
+
+            if is_discord:
+                payload = json.dumps({"content": text}).encode()
+            elif is_slack:
+                payload = json.dumps({"text": text.replace('**', '*')}).encode()
+            else:
+                payload = json.dumps({"text": text, "changes": changes}).encode()
+
+            import urllib.request
+            req = urllib.request.Request(
+                self.webhook_url,
+                data=payload,
+                headers={'Content-Type': 'application/json', 'User-Agent': 'diff-hunter'},
+                method='POST'
+            )
+            urllib.request.urlopen(req, timeout=10)
+            self.log("Webhook notification sent", 'success')
+        except Exception as e:
+            self.log(f"Webhook failed: {e}", 'warn')
 
     # ==================== TARGET MANAGEMENT ====================
 
@@ -439,6 +500,9 @@ class DiffHunter:
             history_file = self.history_dir / f"{domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             history_file.write_text(json.dumps(changes, indent=2))
 
+            # Send webhook notification
+            self.send_webhook(changes)
+
         self.log(f"Scan complete. {len(changes)} changes detected.", 'success' if not changes else 'alert')
         return changes
 
@@ -530,6 +594,7 @@ class DiffHunter:
 def main():
     parser = argparse.ArgumentParser(description='Diff Hunter - Monitor targets for changes')
     parser.add_argument('-V', '--version', action='version', version=f'diff-hunter {__version__}')
+    parser.add_argument('--webhook', help='Webhook URL for notifications (Discord, Slack, or generic)')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # Add target
@@ -555,10 +620,34 @@ def main():
     report_parser = subparsers.add_parser('report', help='Show recent changes')
     report_parser.add_argument('-d', '--days', type=int, default=7, help='Days to show')
 
-    args = parser.parse_args()
-    hunter = DiffHunter()
+    # Configure webhook
+    config_parser = subparsers.add_parser('config', help='Configure settings')
+    config_parser.add_argument('--set-webhook', help='Set persistent webhook URL')
+    config_parser.add_argument('--clear-webhook', action='store_true', help='Remove webhook URL')
+    config_parser.add_argument('--show', action='store_true', help='Show current configuration')
 
-    if args.command == 'add':
+    args = parser.parse_args()
+    hunter = DiffHunter(webhook_url=getattr(args, 'webhook', None))
+
+    if args.command == 'config':
+        config = hunter.load_config()
+        if args.set_webhook:
+            config['webhook_url'] = args.set_webhook
+            hunter.save_config(config)
+            hunter.log(f"Webhook set: {args.set_webhook[:50]}...", 'success')
+        elif args.clear_webhook:
+            config.pop('webhook_url', None)
+            hunter.save_config(config)
+            hunter.log("Webhook removed", 'success')
+        elif args.show:
+            if config:
+                for k, v in config.items():
+                    print(f"  {k}: {v}")
+            else:
+                hunter.log("No configuration set", 'info')
+        else:
+            config_parser.print_help()
+    elif args.command == 'add':
         hunter.add_target(args.domain)
     elif args.command == 'remove':
         hunter.remove_target(args.domain)
