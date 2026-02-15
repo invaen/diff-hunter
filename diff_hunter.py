@@ -155,6 +155,68 @@ class DiffHunter:
 
         return subdomains
 
+    def resolve_dns(self, hostname):
+        """Resolve DNS records for a hostname"""
+        records = {}
+        try:
+            ips = socket.getaddrinfo(hostname, None, socket.AF_INET)
+            records['A'] = sorted(set(addr[4][0] for addr in ips))
+        except (socket.gaierror, OSError):
+            records['A'] = []
+        try:
+            ips = socket.getaddrinfo(hostname, None, socket.AF_INET6)
+            records['AAAA'] = sorted(set(addr[4][0] for addr in ips))
+        except (socket.gaierror, OSError):
+            records['AAAA'] = []
+        try:
+            cname = socket.getfqdn(hostname)
+            if cname != hostname:
+                records['CNAME'] = cname
+        except (socket.gaierror, OSError):
+            pass
+        return records
+
+    def check_dns_changes(self, domain, target_data, changes):
+        """Check for DNS record changes across subdomains"""
+        sample_hosts = list(target_data.get('subdomains', []))[:20]
+
+        dns_results = {}
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(self.resolve_dns, h): h for h in sample_hosts}
+            for future in as_completed(futures):
+                host = futures[future]
+                dns_results[host] = future.result()
+
+        previous_dns = target_data.get('dns_records', {})
+
+        for host, current in dns_results.items():
+            prev = previous_dns.get(host, {})
+            if prev:
+                # Check for IP changes
+                if current.get('A') != prev.get('A') and (current.get('A') or prev.get('A')):
+                    self.log(f"DNS change on {host}: {prev.get('A', [])} → {current.get('A', [])}", 'alert')
+                    changes.append({
+                        'type': 'dns_change',
+                        'host': host,
+                        'record': 'A',
+                        'old': prev.get('A', []),
+                        'new': current.get('A', []),
+                        'timestamp': datetime.now().isoformat()
+                    })
+                # Check for CNAME changes (potential subdomain takeover)
+                if current.get('CNAME') != prev.get('CNAME'):
+                    self.log(f"CNAME change on {host}: {prev.get('CNAME', 'none')} → {current.get('CNAME', 'none')}", 'alert')
+                    changes.append({
+                        'type': 'dns_change',
+                        'host': host,
+                        'record': 'CNAME',
+                        'old': prev.get('CNAME', ''),
+                        'new': current.get('CNAME', ''),
+                        'timestamp': datetime.now().isoformat()
+                    })
+
+        target_data['dns_records'] = dns_results
+
     def get_response_hash(self, url):
         """Get hash of response for change detection"""
         try:
@@ -356,6 +418,13 @@ class DiffHunter:
             target_data['endpoints'] = {}
         target_data['endpoints'][main_host] = current_endpoints
 
+        # 4. Check DNS record changes
+        if not initial:
+            self.check_dns_changes(domain, target_data, changes)
+        else:
+            # Capture initial DNS baseline
+            self.check_dns_changes(domain, target_data, [])
+
         # Save changes
         target_data['last_scan'] = datetime.now().isoformat()
         self.targets[domain] = target_data
@@ -451,6 +520,8 @@ class DiffHunter:
                     print(f"  • {alert['host']}{alert['path']}")
                 elif alert_type == 'status_change':
                     print(f"  • {alert['host']}: {alert['old']} → {alert['new']}")
+                elif alert_type == 'dns_change':
+                    print(f"  • {alert['host']} [{alert.get('record', 'A')}]: {alert.get('old', '?')} → {alert.get('new', '?')}")
                 else:
                     print(f"  • {alert.get('host', alert.get('domain', 'unknown'))}")
             print()
