@@ -16,6 +16,7 @@ import os
 import hashlib
 import argparse
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 import socket
@@ -237,8 +238,7 @@ class DiffHunter:
             '/.github/workflows',
         ]
 
-        found = []
-        for path in paths:
+        def check_path(path):
             try:
                 context = ssl.create_default_context()
                 context.check_hostname = False
@@ -248,11 +248,20 @@ class DiffHunter:
                     conn.request('GET', path, headers={'User-Agent': 'Mozilla/5.0'})
                     resp = conn.getresponse()
                     if resp.status == 200:
-                        found.append(path)
+                        return path
                 finally:
                     conn.close()
-            except Exception:
+            except (socket.timeout, ConnectionError, ssl.SSLError, OSError):
                 pass
+            return None
+
+        found = []
+        with ThreadPoolExecutor(max_workers=15) as executor:
+            futures = {executor.submit(check_path, p): p for p in paths}
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    found.append(result)
 
         return found
 
@@ -287,18 +296,23 @@ class DiffHunter:
         # Update stored subdomains
         target_data['subdomains'] = list(current_subs)
 
-        # 2. Check response changes on known hosts
+        # 2. Check response changes on known hosts (concurrent)
         sample_hosts = list(current_subs)[:20]  # Check up to 20 hosts
 
-        for host in sample_hosts:
-            current_hash = self.get_response_hash(host)
+        hash_results = {}
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(self.get_response_hash, h): h for h in sample_hosts}
+            for future in as_completed(futures):
+                host = futures[future]
+                hash_results[host] = future.result()
+
+        for host, current_hash in hash_results.items():
             if not current_hash:
                 continue
 
             previous_hash = target_data.get('response_hashes', {}).get(host)
 
             if previous_hash and not initial:
-                # Check for changes
                 if current_hash['status'] != previous_hash.get('status'):
                     self.log(f"Status change on {host}: {previous_hash.get('status')} → {current_hash['status']}", 'alert')
                     changes.append({
@@ -317,7 +331,6 @@ class DiffHunter:
                         'timestamp': datetime.now().isoformat()
                     })
 
-            # Update hash
             if 'response_hashes' not in target_data:
                 target_data['response_hashes'] = {}
             target_data['response_hashes'][host] = current_hash
