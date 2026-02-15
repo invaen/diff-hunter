@@ -187,15 +187,54 @@ class DiffHunter:
     def check_interesting_paths(self, host):
         """Check for new interesting paths"""
         paths = [
-            '/.git/HEAD', '/.env', '/robots.txt', '/sitemap.xml',
-            '/swagger.json', '/api/swagger.json', '/graphql',
-            '/actuator/health', '/debug', '/.well-known/security.txt',
-            '/openapi.json', '/api-docs', '/api/v1/docs',
-            '/.DS_Store', '/wp-json/wp/v2/users', '/server-status',
-            '/server-info', '/elmah.axd', '/trace.axd',
-            '/actuator/env', '/actuator/configprops',
-            '/admin', '/admin/login', '/phpinfo.php',
-            '/.htaccess', '/crossdomain.xml', '/clientaccesspolicy.xml',
+            # Version control
+            '/.git/HEAD', '/.git/config', '/.svn/entries', '/.hg/dirstate',
+            # Environment and config
+            '/.env', '/.env.bak', '/.env.local', '/.env.production',
+            '/.env.staging', '/config.json', '/config.yml', '/config.xml',
+            # Web server
+            '/.htaccess', '/.htpasswd', '/web.config', '/server-status',
+            '/server-info', '/nginx.conf',
+            # API documentation
+            '/swagger.json', '/swagger-ui.html', '/swagger/v1/swagger.json',
+            '/api/swagger.json', '/openapi.json', '/openapi.yaml',
+            '/api-docs', '/api/v1/docs', '/api/v2/docs', '/redoc',
+            '/graphql', '/graphiql', '/altair', '/playground',
+            # Actuator / Spring Boot
+            '/actuator', '/actuator/health', '/actuator/env',
+            '/actuator/configprops', '/actuator/mappings',
+            '/actuator/beans', '/actuator/heapdump', '/actuator/threaddump',
+            # Admin panels
+            '/admin', '/admin/login', '/administrator', '/wp-admin',
+            '/wp-login.php', '/phpmyadmin', '/adminer.php',
+            '/cpanel', '/webmail', '/_admin',
+            # Common files
+            '/robots.txt', '/sitemap.xml', '/sitemap_index.xml',
+            '/crossdomain.xml', '/clientaccesspolicy.xml',
+            '/.well-known/security.txt', '/.well-known/openid-configuration',
+            # Debug and diagnostics
+            '/debug', '/trace', '/phpinfo.php', '/info.php',
+            '/elmah.axd', '/trace.axd', '/test', '/test.php',
+            '/.DS_Store', '/Thumbs.db',
+            # Backup files
+            '/backup.sql', '/backup.zip', '/db.sql', '/dump.sql',
+            '/database.sql', '/site.tar.gz', '/backup.tar.gz',
+            # Cloud metadata
+            '/latest/meta-data/', '/.aws/credentials',
+            # Package files (dependency disclosure)
+            '/package.json', '/composer.json', '/Gemfile',
+            '/requirements.txt', '/Pipfile',
+            # User enumeration
+            '/wp-json/wp/v2/users', '/api/users', '/api/v1/users',
+            # JavaScript source maps
+            '/main.js.map', '/app.js.map', '/bundle.js.map',
+            # Error pages (info disclosure)
+            '/error', '/404', '/500',
+            # Webpack / build artifacts
+            '/webpack.config.js', '/manifest.json', '/asset-manifest.json',
+            # Jenkins / CI
+            '/jenkins', '/jenkins/login', '/.circleci/config.yml',
+            '/.github/workflows',
         ]
 
         found = []

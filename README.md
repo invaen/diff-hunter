@@ -96,19 +96,17 @@ For each known host, tracks:
 - **Server header** — detects infrastructure changes
 
 ### 3. Sensitive Endpoint Exposure
-Checks 27 high-value paths on the main domain:
-```
-/.git/HEAD          /.env               /robots.txt
-/sitemap.xml        /swagger.json       /api/swagger.json
-/graphql            /actuator/health    /debug
-/.well-known/security.txt              /openapi.json
-/api-docs           /api/v1/docs        /.DS_Store
-/wp-json/wp/v2/users /server-status    /server-info
-/elmah.axd          /trace.axd          /actuator/env
-/actuator/configprops /admin            /admin/login
-/phpinfo.php        /.htaccess          /crossdomain.xml
-/clientaccesspolicy.xml
-```
+Checks 80+ high-value paths on the main domain across categories:
+- **Version control** — `.git/HEAD`, `.git/config`, `.svn/entries`, `.hg/dirstate`
+- **Environment files** — `.env`, `.env.bak`, `.env.local`, `.env.production`, `.env.staging`
+- **API documentation** — `swagger.json`, `openapi.json`, `graphql`, `graphiql`, `redoc`
+- **Spring Boot Actuator** — `actuator/health`, `actuator/env`, `actuator/heapdump`, `actuator/mappings`
+- **Admin panels** — `/admin`, `/wp-admin`, `/phpmyadmin`, `/adminer.php`, `/cpanel`
+- **Backup files** — `backup.sql`, `backup.zip`, `dump.sql`, `site.tar.gz`
+- **Package files** — `package.json`, `composer.json`, `requirements.txt`, `Gemfile`
+- **CI/CD** — `/jenkins`, `.circleci/config.yml`, `.github/workflows`
+- **Source maps** — `main.js.map`, `app.js.map`, `bundle.js.map`
+- **Cloud metadata** — `/latest/meta-data/`, `.aws/credentials`
 
 ## Output
 
