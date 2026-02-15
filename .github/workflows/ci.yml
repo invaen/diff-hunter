@@ -24,8 +24,14 @@ jobs:
       - name: Install package
         run: pip install -e .
 
+      - name: Install test dependencies
+        run: pip install pytest
+
       - name: Verify CLI entry point
         run: diff-hunter --version
 
       - name: Verify subcommands load
         run: diff-hunter list
+
+      - name: Run tests
+        run: python -m pytest tests/ -v

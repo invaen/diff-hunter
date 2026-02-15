@@ -24,7 +24,7 @@ import ssl
 import http.client
 import re
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # Colors
 class C:
@@ -309,7 +309,7 @@ class DiffHunter:
                 }
             finally:
                 conn.close()
-        except Exception as e:
+        except (socket.timeout, ConnectionError, ssl.SSLError, OSError, http.client.HTTPException):
             return None
 
     def check_interesting_paths(self, host):
@@ -566,7 +566,7 @@ class DiffHunter:
                 alert_time = datetime.fromisoformat(alert['timestamp'])
                 if alert_time > cutoff:
                     recent.append(alert)
-            except Exception:
+            except (ValueError, KeyError):
                 pass
 
         if not recent:
