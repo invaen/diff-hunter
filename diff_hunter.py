@@ -31,6 +31,10 @@ class C:
     R = '\033[91m'; G = '\033[92m'; Y = '\033[93m'; B = '\033[94m'
     M = '\033[95m'; C = '\033[96m'; W = '\033[97m'; E = '\033[0m'
 
+    @classmethod
+    def disable(cls):
+        cls.R = cls.G = cls.Y = cls.B = cls.M = cls.C = cls.W = cls.E = ''
+
 def banner():
     print(f"""{C.C}
     ╔╦╗╦╔═╗╔═╗  ╦ ╦╦ ╦╔╗╔╔╦╗╔═╗╦═╗
@@ -511,7 +515,7 @@ class DiffHunter:
         banner()
         if not self.targets:
             self.log("No targets to scan", 'warn')
-            return
+            return []
 
         total_changes = []
         for domain in self.targets:
@@ -526,6 +530,8 @@ class DiffHunter:
 
         if total_changes:
             print(f"\n{C.R}⚠ ACTION REQUIRED - New attack surface detected!{C.E}")
+
+        return total_changes
 
     def watch(self, interval=3600):
         """Continuous monitoring mode"""
@@ -595,6 +601,8 @@ def main():
     parser = argparse.ArgumentParser(description='Diff Hunter - Monitor targets for changes')
     parser.add_argument('-V', '--version', action='version', version=f'diff-hunter {__version__}')
     parser.add_argument('--webhook', help='Webhook URL for notifications (Discord, Slack, or generic)')
+    parser.add_argument('--no-color', action='store_true', help='Disable ANSI color output')
+    parser.add_argument('--json', action='store_true', dest='json_output', help='Output results as JSON')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # Add target
@@ -627,6 +635,10 @@ def main():
     config_parser.add_argument('--show', action='store_true', help='Show current configuration')
 
     args = parser.parse_args()
+
+    if args.no_color or args.json_output:
+        C.disable()
+
     hunter = DiffHunter(webhook_url=getattr(args, 'webhook', None))
 
     if args.command == 'config':
@@ -655,9 +667,11 @@ def main():
         hunter.list_targets()
     elif args.command == 'scan':
         if args.domain:
-            hunter.scan_target(args.domain)
+            changes = hunter.scan_target(args.domain)
         else:
-            hunter.scan_all()
+            changes = hunter.scan_all()
+        if args.json_output:
+            print(json.dumps(changes or [], indent=2))
     elif args.command == 'watch':
         hunter.watch(args.interval)
     elif args.command == 'report':
