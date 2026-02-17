@@ -24,7 +24,7 @@ import ssl
 import http.client
 import re
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 # Colors
 class C:
@@ -123,6 +123,9 @@ class DiffHunter:
 
         try:
             from urllib.parse import urlparse
+            import urllib.request
+            import urllib.error
+
             parsed = urlparse(self.webhook_url)
             is_discord = 'discord.com' in parsed.netloc
             is_slack = 'hooks.slack.com' in parsed.netloc
@@ -134,7 +137,6 @@ class DiffHunter:
             else:
                 payload = json.dumps({"text": text, "changes": changes}).encode()
 
-            import urllib.request
             req = urllib.request.Request(
                 self.webhook_url,
                 data=payload,
@@ -143,7 +145,7 @@ class DiffHunter:
             )
             urllib.request.urlopen(req, timeout=10)
             self.log("Webhook notification sent", 'success')
-        except Exception as e:
+        except (urllib.error.URLError, socket.timeout, OSError, ValueError) as e:
             self.log(f"Webhook failed: {e}", 'warn')
 
     # ==================== TARGET MANAGEMENT ====================
@@ -205,6 +207,7 @@ class DiffHunter:
         subdomains = set()
         try:
             import urllib.request
+            import urllib.error
             url = f"https://crt.sh/?q=%25.{domain}&output=json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=30) as response:
@@ -215,7 +218,7 @@ class DiffHunter:
                         sub = sub.strip().lower()
                         if sub and '*' not in sub and sub.endswith(domain):
                             subdomains.add(sub)
-        except Exception as e:
+        except (urllib.error.URLError, json.JSONDecodeError, socket.timeout, OSError, ValueError) as e:
             self.log(f"crt.sh error: {e}", 'warn')
 
         return subdomains
