@@ -44,7 +44,7 @@ def banner():
     """)
 
 class DiffHunter:
-    def __init__(self, webhook_url=None):
+    def __init__(self, webhook_url=None, insecure=True):
         self.data_dir = Path.home() / '.bounty' / 'diff-hunter'
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.targets_file = self.data_dir / 'targets.json'
@@ -54,8 +54,17 @@ class DiffHunter:
         self.config_file = self.data_dir / 'config.json'
         self.webhook_url = webhook_url or self.load_config().get('webhook_url')
 
+        self.insecure = insecure
         self.targets = self.load_targets()
         self.alerts = self.load_alerts()
+
+    def _ssl_context(self):
+        """Create SSL context respecting --insecure flag."""
+        ctx = ssl.create_default_context()
+        if self.insecure:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+        return ctx
 
     def load_config(self):
         if self.config_file.exists():
@@ -293,11 +302,7 @@ class DiffHunter:
             p = urlparse(parsed)
             host = p.netloc or p.path
 
-            context = ssl.create_default_context()
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-
-            conn = http.client.HTTPSConnection(host, timeout=5, context=context)
+            conn = http.client.HTTPSConnection(host, timeout=5, context=self._ssl_context())
             try:
                 conn.request('GET', p.path or '/', headers={'User-Agent': 'Mozilla/5.0'})
                 resp = conn.getresponse()
@@ -370,10 +375,7 @@ class DiffHunter:
 
         def check_path(path):
             try:
-                context = ssl.create_default_context()
-                context.check_hostname = False
-                context.verify_mode = ssl.CERT_NONE
-                conn = http.client.HTTPSConnection(host, timeout=3, context=context)
+                conn = http.client.HTTPSConnection(host, timeout=3, context=self._ssl_context())
                 try:
                     conn.request('GET', path, headers={'User-Agent': 'Mozilla/5.0'})
                     resp = conn.getresponse()
@@ -606,6 +608,10 @@ def main():
     parser.add_argument('--webhook', help='Webhook URL for notifications (Discord, Slack, or generic)')
     parser.add_argument('--no-color', action='store_true', help='Disable ANSI color output')
     parser.add_argument('--json', action='store_true', dest='json_output', help='Output results as JSON')
+    parser.add_argument('--insecure', action='store_true', default=True,
+                        help='Skip SSL certificate verification (default: on)')
+    parser.add_argument('--no-insecure', action='store_false', dest='insecure',
+                        help='Enable SSL certificate verification')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # Add target
@@ -642,7 +648,7 @@ def main():
     if args.no_color or args.json_output:
         C.disable()
 
-    hunter = DiffHunter(webhook_url=getattr(args, 'webhook', None))
+    hunter = DiffHunter(webhook_url=getattr(args, 'webhook', None), insecure=args.insecure)
 
     if args.command == 'config':
         config = hunter.load_config()
